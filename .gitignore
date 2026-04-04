@@ -1,3 +1,4 @@
 .env
+statistics.json
 __pycache__/
 *.pyc
