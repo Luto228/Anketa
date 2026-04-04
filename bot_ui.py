@@ -1,4 +1,9 @@
 import logging
+import sys
+import os
+
+# Prevent Python from creating __pycache__ folders
+sys.dont_write_bytecode = True
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import (
     ApplicationBuilder,
@@ -26,13 +31,29 @@ logger = logging.getLogger(__name__)
 STATES = list(range(len(core.SURVEY_QUESTIONS)))
 END_STATE = -1
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Starts the conversation and asks the first question."""
-    context.user_data["responses"] = {}
+# Main Menu Keyboard
+MAIN_MENU_KEYBOARD = [
+    ["🚀 Начать Анкету", "📊 Статистика"],
+]
+
+async def show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Displays the main menu with buttons."""
+    reply_markup = ReplyKeyboardMarkup(
+        MAIN_MENU_KEYBOARD, resize_keyboard=True, one_time_keyboard=False
+    )
     await update.message.reply_text(
         "👋 Привет! Добро пожаловать в СУПЕР АНКЕТУ!\n"
-        "Давай начнем наше сумасшествие!\n\n"
-        "📝 Хочешь посмотреть общую статистику? Нажми /stats"
+        "Выбери действие ниже:",
+        reply_markup=reply_markup
+    )
+
+async def start_survey(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Starts the conversation and asks the first question."""
+    context.user_data["responses"] = {}
+    context.user_data["current_q"] = 0
+    await update.message.reply_text(
+        "🔥 Начинаем наше сумасшествие! Отвечай честно (или нет).",
+        reply_markup=ReplyKeyboardRemove()
     )
     return await ask_question(update, context, 0)
 
@@ -41,7 +62,11 @@ async def ask_question(update: Update, context: ContextTypes.DEFAULT_TYPE, q_idx
     q = core.SURVEY_QUESTIONS[q_idx]
     
     if q["type"] == "choice":
+        # Options in rows of 2
         reply_keyboard = [q["options"][i:i+2] for i in range(0, len(q["options"]), 2)]
+        # Add special Cancel row
+        reply_keyboard.append(["❌ Отмена"])
+        
         await update.message.reply_text(
             f"❓ {q['question']}",
             reply_markup=ReplyKeyboardMarkup(
@@ -49,9 +74,10 @@ async def ask_question(update: Update, context: ContextTypes.DEFAULT_TYPE, q_idx
             ),
         )
     else:
+        # Show a "Cancel" button for text inputs
         await update.message.reply_text(
             f"❓ {q['question']}",
-            reply_markup=ReplyKeyboardRemove(),
+            reply_markup=ReplyKeyboardMarkup([["❌ Отмена"]], resize_keyboard=True),
         )
     
     return q_idx
@@ -62,6 +88,20 @@ async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     q = core.SURVEY_QUESTIONS[q_idx]
     
     answer = update.message.text
+    
+    # Handle "Cancel" button if it arrived here
+    if answer == "❌ Отмена":
+        return await cancel(update, context)
+
+    # Validation for choices
+    if q["type"] == "choice" and answer not in q["options"]:
+        await update.message.reply_text(
+            f"❌ Эй, выбери вариант из меню!\n"
+            f"Твой ответ «{answer}» не подходит.",
+            reply_markup=ReplyKeyboardMarkup([q["options"][i:i+2] for i in range(0, len(q["options"]), 2)] + [["❌ Отмена"]], resize_keyboard=True)
+        )
+        return q_idx
+
     context.user_data["responses"][q["id"]] = answer
     
     next_q_idx = q_idx + 1
@@ -74,15 +114,16 @@ async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         await update.message.reply_text(
             f"✅ ТВОЁ БЕЗУМИЕ СОХРАНЕНО!\n"
             f"Спасибо за участие! Пройденная анкета: {core.get_stats()}\n"
-            "Напиши /stats чтобы увидеть общую аналитику!",
-            reply_markup=ReplyKeyboardRemove()
+            "Нажми кнопку ниже, чтобы увидеть аналитику или начать заново!",
+            reply_markup=ReplyKeyboardMarkup(MAIN_MENU_KEYBOARD, resize_keyboard=True)
         )
         return ConversationHandler.END
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Cancels and ends the conversation."""
+    """Cancels and ends the conversation and returns to menu."""
     await update.message.reply_text(
-        "Эх, ты решил сбежать от безумия! Ну пока.", reply_markup=ReplyKeyboardRemove()
+        "Эх, ты решил сбежать от безумия! Ну пока.", 
+        reply_markup=ReplyKeyboardMarkup(MAIN_MENU_KEYBOARD, resize_keyboard=True)
     )
     return ConversationHandler.END
 
@@ -103,18 +144,27 @@ def run_bot():
 
     # Build states dynamically based on number of questions
     conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("start", start)],
+        entry_points=[
+            MessageHandler(filters.Regex("^🚀 Начать Анкету$"), start_survey),
+            CommandHandler("start_anketa", start_survey)
+        ],
         states={
-            i: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_answer)] 
+            i: [MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Regex("^❌ Отмена$"), handle_answer)] 
             for i in range(len(core.SURVEY_QUESTIONS))
         },
-        fallbacks=[CommandHandler("cancel", cancel)],
+        fallbacks=[
+            CommandHandler("cancel", cancel),
+            MessageHandler(filters.Regex("^❌ Отмена$"), cancel)
+        ],
     )
 
+    app.add_handler(CommandHandler("start", show_menu))
+    app.add_handler(CommandHandler("menu", show_menu))
     app.add_handler(conv_handler)
     app.add_handler(CommandHandler("stats", stats))
+    app.add_handler(MessageHandler(filters.Regex("^📊 Статистика$"), stats))
     
-    print("🤖 Бот запущен! Иди в Telegram и нажми /start.")
+    print("🤖 Бот запущен! Меню с кнопками активно.")
     app.run_polling()
 
 if __name__ == "__main__":

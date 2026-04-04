@@ -1,6 +1,10 @@
 import json
 import os
+import sys
 from datetime import datetime
+
+# Prevent Python from creating __pycache__ folders
+sys.dont_write_bytecode = True
 
 # --- CONFIGURATION & DATA ---
 DATA_FILE = "statistics.json"
@@ -112,6 +116,10 @@ def get_detailed_stats():
         stats_msg += f"\n🔹 *{q['question']}*\n"
         answers = [resp.get(q['id']) for resp in data if q['id'] in resp]
         
+        if not answers:
+            stats_msg += "  (пока нет ответов)\n"
+            continue
+
         if q["type"] == "choice":
             counts = Counter(answers)
             for opt in q["options"]:
@@ -119,8 +127,15 @@ def get_detailed_stats():
                 percent = (count / len(data) * 100) if len(data) > 0 else 0
                 stats_msg += f"• `{count:2}` {percent:4.1f}% | {opt}\n"
         else:
-            # Show last few text answers
-            subset = answers[-5:] if answers else []
-            stats_msg += f"Последние ответы: {', '.join(map(str, subset))}\n"
+            # Show top most frequent answers for text questions
+            counts = Counter([str(a).strip() for a in answers if a])
+            common = counts.most_common(3) # Show only top 3 unique answers
+            
+            for val, count in common:
+                stats_msg += f"  - «{val}» ({count})\n"
+            
+            unique_count = len(counts)
+            if unique_count > 3:
+                stats_msg += f"  ...и еще {unique_count - 3} разных вариантов.\n"
 
     return stats_msg
