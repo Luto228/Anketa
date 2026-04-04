@@ -1,6 +1,7 @@
 import logging
 import sys
 import os
+from datetime import datetime
 
 # Prevent Python from creating __pycache__ folders
 sys.dont_write_bytecode = True
@@ -128,7 +129,21 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ConversationHandler.END
 
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Sends the general statistics to the user."""
+    """Sends the general statistics to the user with a cooldown."""
+    now = datetime.now().timestamp()
+    last_requested = context.user_data.get("last_stats_request", 0)
+    cooldown = 10  # Seconds
+    
+    if now - last_requested < cooldown:
+        wait_time = int(cooldown - (now - last_requested))
+        await update.message.reply_text(
+            f"⏳ Слишком быстро! Подожди еще {wait_time} сек., чтобы не перегреть сервак."
+        )
+        return
+
+    # Update cooldown
+    context.user_data["last_stats_request"] = now
+    
     detailed_stats = core.get_detailed_stats()
     await update.message.reply_text(detailed_stats, parse_mode="Markdown")
 
