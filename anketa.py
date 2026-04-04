@@ -89,3 +89,38 @@ def show_analytics():
             print(f"  Последние ответы: {', '.join(map(str, answers[-3:]))}...")
 
     print("\n" + "="*40 + "\n")
+
+def get_detailed_stats():
+    """Returns a string with detailed information about all responses for Telegram."""
+    if not os.path.exists(DATA_FILE):
+        return "📭 Пока никто не прошел анкету."
+
+    try:
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (json.JSONDecodeError, FileNotFoundError):
+        return "❌ Ошибка при чтении данных статистики."
+
+    if not data:
+        return "📭 Пока никто не прошел анкету."
+
+    stats_msg = f"📊 *АНАЛИТИКА БЕЗУМИЯ*\nОпрошено героев: {len(data)}\n"
+    
+    from collections import Counter
+    
+    for q in SURVEY_QUESTIONS:
+        stats_msg += f"\n🔹 *{q['question']}*\n"
+        answers = [resp.get(q['id']) for resp in data if q['id'] in resp]
+        
+        if q["type"] == "choice":
+            counts = Counter(answers)
+            for opt in q["options"]:
+                count = counts.get(opt, 0)
+                percent = (count / len(data) * 100) if len(data) > 0 else 0
+                stats_msg += f"• `{count:2}` {percent:4.1f}% | {opt}\n"
+        else:
+            # Show last few text answers
+            subset = answers[-5:] if answers else []
+            stats_msg += f"Последние ответы: {', '.join(map(str, subset))}\n"
+
+    return stats_msg

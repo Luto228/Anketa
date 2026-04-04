@@ -31,7 +31,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data["responses"] = {}
     await update.message.reply_text(
         "👋 Привет! Добро пожаловать в СУПЕР АНКЕТУ!\n"
-        "Давай начнем наше сумасшествие!"
+        "Давай начнем наше сумасшествие!\n\n"
+        "📝 Хочешь посмотреть общую статистику? Нажми /stats"
     )
     return await ask_question(update, context, 0)
 
@@ -72,7 +73,8 @@ async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         core.save_response(context.user_data["responses"])
         await update.message.reply_text(
             f"✅ ТВОЁ БЕЗУМИЕ СОХРАНЕНО!\n"
-            f"Спасибо за участие! {core.get_stats()}",
+            f"Спасибо за участие! Пройденная анкета: {core.get_stats()}\n"
+            "Напиши /stats чтобы увидеть общую аналитику!",
             reply_markup=ReplyKeyboardRemove()
         )
         return ConversationHandler.END
@@ -83,6 +85,11 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         "Эх, ты решил сбежать от безумия! Ну пока.", reply_markup=ReplyKeyboardRemove()
     )
     return ConversationHandler.END
+
+async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Sends the general statistics to the user."""
+    detailed_stats = core.get_detailed_stats()
+    await update.message.reply_text(detailed_stats, parse_mode="Markdown")
 
 def run_bot():
     # Load token from .env file
@@ -105,6 +112,7 @@ def run_bot():
     )
 
     app.add_handler(conv_handler)
+    app.add_handler(CommandHandler("stats", stats))
     
     print("🤖 Бот запущен! Иди в Telegram и нажми /start.")
     app.run_polling()
